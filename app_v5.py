@@ -15,6 +15,8 @@ collection_name = os.getenv("MONGO_COLLECTION_NAME")
 # MongoDB Connection
 mongo_uri = st.secrets["MONGO"]["URI"]
 db_name = st.secrets["MONGO"]["DB_NAME"]
+collection_name = st.secrets["MONGO"]["COLLECTION_NAME"]
+
 
 client = MongoClient(mongo_uri, tls=True, tlsAllowInvalidCertificates=True, serverSelectionTimeoutMS=5000)
 db = client[db_name]
