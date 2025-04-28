@@ -44,6 +44,7 @@ st.markdown("---")
 st.markdown("""
 **Instructions:**
 - Use the sidebar filters to narrow down your search results
+- Add additional columns to the table by selecting them in the sidebar
 - Click any column header to sort the table or search within that column
 - Click on a record to view more details about the paper
 - Additional details will be displayed below the table
@@ -73,7 +74,7 @@ available_columns = [
     "title", "authors", "year", "isOpenAccess",
     "official_country_name", "WHO_region", "WB_income_group"
 ]
-default_columns = ["title", "authors", "year", "isOpenAccess"]
+default_columns = ["title", "authors", "year", "isOpenAccess", "official_country_name", "WHO_region"]
 
 selected_columns = st.sidebar.multiselect(
     "Select columns to display in table:",
@@ -154,6 +155,9 @@ if not papers_df.empty:
     start_idx = (page - 1) * items_per_page
     end_idx = min(start_idx + items_per_page, len(papers_df))
     page_df = papers_df.iloc[start_idx:end_idx]
+    
+    # 🆕 Sort by year descending BEFORE showing
+    page_df = page_df.sort_values(by="year", ascending=False)
 
     # AgGrid setup
     display_df = page_df[selected_columns]
