@@ -5,6 +5,7 @@ from st_aggrid import AgGrid, GridOptionsBuilder
 import os
 from dotenv import load_dotenv
 import json
+import numpy as np
 
 # Load environment variables
 load_dotenv()
@@ -165,17 +166,27 @@ if not papers_df.empty:
     
     display_df = display_df.copy()
 
-    def to_hashable(x):
-        # Serialize only lists/dicts; leave scalars alone for sorting/filtering
+    def to_display(x):
+        # Scalars stay as-is
+        if isinstance(x, (str, int, float, bool, np.number)) or x is None:
+            return x
+        # Simple lists -> "A, B, C"
+        if isinstance(x, list) and all(
+            (isinstance(i, (str, int, float, bool, np.number)) or i is None) for i in x
+        ):
+            return ", ".join(str(i) for i in x if i not in (None, ""))
+        # Dicts or nested lists -> JSON
         if isinstance(x, (list, dict)):
             try:
                 return json.dumps(x, ensure_ascii=False, sort_keys=True, default=str)
             except Exception:
                 return str(x)
-        return x
+        # Fallback
+        return str(x)
 
     for col in display_df.columns:
-        display_df[col] = display_df[col].map(to_hashable)
+        display_df[col] = display_df[col].map(to_display)
+
     
 
     gb = GridOptionsBuilder.from_dataframe(display_df)
