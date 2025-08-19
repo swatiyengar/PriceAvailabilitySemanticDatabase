@@ -282,13 +282,14 @@
 # else:
 #     st.info("No papers found for the selected filters.")
 
+
 import os
 import json
 import numpy as np
 import pandas as pd
 import streamlit as st
 from pymongo import MongoClient
-from st_aggrid import AgGrid, GridOptionsBuilder
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, DataReturnMode
 from dotenv import load_dotenv
 
 # -----------------------------
@@ -373,7 +374,6 @@ search_term = st.sidebar.text_input("Search Title or Abstract")
 
 try:
     years_raw = [y for y in collection.distinct("year") if y is not None]
-    # normalize years -> ints if possible
     def _as_int(y):
         try:
             return int(y)
@@ -426,7 +426,8 @@ if search_term:
         {"abstract": {"$regex": search_term, "$options": "i"}},
     ]
 
-if year_filter := st.sidebar.multiselect("Select Year(s)", years):
+year_filter = st.sidebar.multiselect("Select Year(s)", years)
+if year_filter:
     query["year"] = {"$in": year_filter}
 
 if open_access_filter:
@@ -552,50 +553,57 @@ else:
     if "year" in page_df.columns:
         page_df = page_df.sort_values(by="year", ascending=False)
 
-    # Build display df
+    # --- AgGrid setup (robust selection) ---
+    # Only include columns the user selected, but **force in** lookup cols
     cols_present = [c for c in selected_columns if c in page_df.columns]
-    # Always include hidden doc_id to map back selection
-    display_cols = cols_present + (["doc_id"] if "doc_id" in page_df.columns else [])
-    display_df = page_df[display_cols].copy()
+    for required in ["doc_id", "title", "year"]:
+        if required in page_df.columns and required not in cols_present:
+            cols_present.append(required)
+
+    display_df = page_df[cols_present].copy()
 
     # Make hash-safe & pretty for lists
     for col in display_df.columns:
         display_df[col] = display_df[col].map(to_display)
 
-    # Grid
     gb = GridOptionsBuilder.from_dataframe(display_df)
     gb.configure_selection(selection_mode="single", use_checkbox=False)
     gb.configure_default_column(filter=True)
+
+    # Make title readable if present
     if "title" in display_df.columns:
         gb.configure_column("title", wrapText=True, autoHeight=True, flex=4, minWidth=250)
+
+    # Keep doc_id visible but narrow to ensure it's included in selected_rows
     if "doc_id" in display_df.columns:
-        gb.configure_column("doc_id", hide=True)
+        gb.configure_column("doc_id", headerName="ID", width=90)
 
     grid_options = gb.build()
 
     ag_grid = AgGrid(
         display_df,
         gridOptions=grid_options,
-        update_mode="SELECTION_CHANGED",
-        data_return_mode="AS_INPUT",
+        update_mode=GridUpdateMode.SELECTION_CHANGED,
+        data_return_mode=DataReturnMode.AS_INPUT,
         fit_columns_on_grid_load=True,
         theme="streamlit",
-        pagination=True,
-        paginationPageSize=items_per_page,
+        # We already paginate server-side; disabling grid pagination avoids confusion
+        # pagination=True, paginationPageSize=items_per_page,
     )
 
-    # Selection details
+    # --- Show selected row details (doc_id first, fallback to title+year) ---
     selected_rows = ag_grid.get("selected_rows", [])
     if isinstance(selected_rows, list) and len(selected_rows) > 0:
         sel = selected_rows[0]
         sel_doc_id = sel.get("doc_id")
+        selected_title = sel.get("title")
+        selected_year = sel.get("year")
 
+        match = pd.DataFrame()
         if sel_doc_id and "doc_id" in page_df.columns:
-            match = page_df[page_df["doc_id"] == sel_doc_id]
-        else:
-            # Fallback: match on title + year
-            selected_title = sel.get("title")
-            selected_year = sel.get("year")
+            match = page_df[page_df["doc_id"] == str(sel_doc_id)]
+
+        if match.empty and selected_title is not None and selected_year is not None:
             match = page_df[
                 (page_df.get("title") == selected_title) & (page_df.get("year") == selected_year)
             ]
