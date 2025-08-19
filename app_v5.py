@@ -4,6 +4,7 @@ from pymongo import MongoClient
 from st_aggrid import AgGrid, GridOptionsBuilder
 import os
 from dotenv import load_dotenv
+import json
 
 # Load environment variables
 load_dotenv()
@@ -161,6 +162,22 @@ if not papers_df.empty:
 
     # AgGrid setup
     display_df = page_df[selected_columns]
+    
+    display_df = display_df.copy()
+
+    def to_hashable(x):
+        # Serialize only lists/dicts; leave scalars alone for sorting/filtering
+        if isinstance(x, (list, dict)):
+            try:
+                return json.dumps(x, ensure_ascii=False, sort_keys=True, default=str)
+            except Exception:
+                return str(x)
+        return x
+
+    for col in display_df.columns:
+        display_df[col] = display_df[col].map(to_hashable)
+    
+
     gb = GridOptionsBuilder.from_dataframe(display_df)
     gb.configure_selection(selection_mode="single", use_checkbox=False)
     gb.configure_default_column(filter=True)  # Enable column search
